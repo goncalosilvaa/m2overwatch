@@ -1,13 +1,11 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const router = useRouter();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -17,18 +15,20 @@ export default function LoginPage() {
       const r = await fetch("/api/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        cache: "no-store",
         body: JSON.stringify({ email: email.trim(), password }),
       });
       const data = await r.json().catch(() => ({}));
       if (r.ok && data?.ok) {
-        router.push("/dashboard");
-        router.refresh();
-      } else {
-        setErr(data?.error || "Credenciais invalidas.");
+        // Navegacao "dura": garante que o cookie acabado de ser definido ja
+        // segue no pedido seguinte (evita o "clicar duas vezes" e o bounce).
+        window.location.assign("/dashboard");
+        return;
       }
+      setErr(data?.error || "Credenciais invalidas.");
+      setBusy(false);
     } catch {
       setErr("Nao foi possivel contactar o servidor.");
-    } finally {
       setBusy(false);
     }
   }
