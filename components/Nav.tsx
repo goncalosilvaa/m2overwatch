@@ -37,12 +37,14 @@ export default function Nav({ sub, role }: { sub?: string; role?: string }) {
           {role === "ADMIN" ? "Admin" : "Cliente"}
         </span>
       )}
-      <Link
-        href="/api/logout"
-        className={`${role ? "" : "ml-auto"} text-muted text-sm border border-border rounded-lg px-3 py-1.5 hover:border-primary`}
-      >
-        Sair
-      </Link>
+      <form action="/api/logout" method="post" className={role ? "" : "ml-auto"}>
+        <button
+          type="submit"
+          className="text-muted text-sm border border-border rounded-lg px-3 py-1.5 hover:border-primary"
+        >
+          Sair
+        </button>
+      </form>
     </header>
   );
 }
