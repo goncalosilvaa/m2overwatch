@@ -12,7 +12,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    let user = await prisma.user.findUnique({ where: { email } });
+    let user = await prisma.user.findUnique({
+      where: { email },
+      include: { server: { select: { id: true, name: true } } },
+    });
 
     // Bootstrap: se a DB ainda nao tem utilizadores, cria o admin a partir do .env.
     if (!user) {
@@ -20,14 +23,21 @@ export async function POST(req: Request) {
       const adminPass = String(process.env.ADMIN_PASSWORD ?? "").trim();
       const count = await prisma.user.count();
       if (count === 0 && adminEmail && email === adminEmail && password === adminPass) {
-        user = await prisma.user.create({
+        const created = await prisma.user.create({
           data: { email, passwordHash: hashPassword(password), role: "ADMIN" },
         });
+        user = { ...created, server: null } as any;
       }
     }
 
     if (user && verifyPassword(password, user.passwordHash)) {
-      await createSession(user.email);
+      await createSession({
+        uid: user.id,
+        email: user.email,
+        role: user.role,
+        serverId: user.serverId ?? null,
+        serverName: user.server?.name ?? null,
+      });
       return NextResponse.json({ ok: true });
     }
     return NextResponse.json({ ok: false, error: "Credenciais invalidas" }, { status: 401 });
