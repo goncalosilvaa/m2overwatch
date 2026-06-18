@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { createSession } from "@/lib/auth";
+import { signSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth";
 import { hashPassword, verifyPassword } from "@/lib/password";
 
 export async function POST(req: Request) {
@@ -17,7 +17,6 @@ export async function POST(req: Request) {
       include: { server: { select: { id: true, name: true } } },
     });
 
-    // Bootstrap: se a DB ainda nao tem utilizadores, cria o admin a partir do .env.
     if (!user) {
       const adminEmail = String(process.env.ADMIN_EMAIL ?? "").trim().toLowerCase();
       const adminPass = String(process.env.ADMIN_PASSWORD ?? "").trim();
@@ -31,14 +30,17 @@ export async function POST(req: Request) {
     }
 
     if (user && verifyPassword(password, user.passwordHash)) {
-      await createSession({
+      const token = await signSession({
         uid: user.id,
         email: user.email,
         role: user.role,
         serverId: user.serverId ?? null,
         serverName: user.server?.name ?? null,
       });
-      return NextResponse.json({ ok: true });
+      // Define o cookie DIRETAMENTE na resposta (garante o Set-Cookie na Vercel).
+      const res = NextResponse.json({ ok: true });
+      res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions);
+      return res;
     }
     return NextResponse.json({ ok: false, error: "Credenciais invalidas" }, { status: 401 });
   } catch {

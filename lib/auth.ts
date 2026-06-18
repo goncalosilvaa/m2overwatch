@@ -4,6 +4,16 @@ import { prisma } from "./prisma";
 
 const secret = new TextEncoder().encode(process.env.AUTH_SECRET || "dev-secret-change-me");
 export const SESSION_COOKIE = "m2ow_session";
+export const SESSION_MAX_AGE = 60 * 60 * 24 * 7;
+
+// Opcoes do cookie de sessao (usadas ao defini-lo na RESPOSTA do route handler).
+export const sessionCookieOptions = {
+  httpOnly: true,
+  sameSite: "lax" as const,
+  secure: process.env.NODE_ENV === "production",
+  path: "/",
+  maxAge: SESSION_MAX_AGE,
+};
 
 export type SessionPayload = {
   uid?: string;
@@ -13,15 +23,15 @@ export type SessionPayload = {
   serverName?: string | null;
 };
 
-// O token leva papel + servidor assinados, para a auth nao depender da DB.
-export async function createSession(p: {
+// Assina e DEVOLVE o token (nao escreve cookie). O route handler define-o na resposta.
+export async function signSession(p: {
   uid: string;
   email: string;
   role: string;
   serverId: string | null;
   serverName: string | null;
-}) {
-  const token = await new SignJWT({
+}): Promise<string> {
+  return new SignJWT({
     uid: p.uid,
     email: p.email,
     role: p.role,
@@ -32,17 +42,6 @@ export async function createSession(p: {
     .setIssuedAt()
     .setExpirationTime("7d")
     .sign(secret);
-  cookies().set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
-  });
-}
-
-export function clearSession() {
-  cookies().set(SESSION_COOKIE, "", { path: "/", maxAge: 0 });
 }
 
 export async function getSession(): Promise<SessionPayload | null> {
@@ -68,8 +67,6 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   const s = await getSession();
   if (!s?.email) return null;
 
-  // Token novo: papel/servidor vem do token -> sem ida a DB (imune a falhas
-  // transitorias da DB, que antes causavam logout indevido na navegacao).
   if (s.role) {
     return {
       id: s.uid ?? "",
@@ -80,7 +77,6 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     };
   }
 
-  // Token antigo (so email, de antes desta versao): enriquece via DB uma vez.
   try {
     const u = await prisma.user.findUnique({
       where: { email: s.email },

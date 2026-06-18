@@ -38,7 +38,7 @@ def load_env():
 
 load_env()
 
-DB_HOST = os.environ.get("M2OW_DB_HOST", "127.0.0.1")
+DB_HOST = os.environ.get("M2OW_DB_HOST", "localhost")
 DB_PORT = int(os.environ.get("M2OW_DB_PORT", "3306"))
 DB_USER = os.environ.get("M2OW_DB_USER", "metin2")
 DB_PASS = os.environ.get("M2OW_DB_PASS", "")
