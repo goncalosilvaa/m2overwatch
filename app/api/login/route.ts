@@ -3,13 +3,15 @@ import { prisma } from "@/lib/prisma";
 import { signSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth";
 import { hashPassword, verifyPassword } from "@/lib/password";
 
+// Login por submissao de FORMULARIO (navegacao top-level), nao por fetch.
+// O cookie segue num redirect 303 -> o browser guarda-o de forma fiavel.
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as { email?: unknown; password?: unknown };
-  const email = String(body.email ?? "").trim().toLowerCase();
-  const password = String(body.password ?? "").trim();
-  if (!email || !password) {
-    return NextResponse.json({ ok: false, error: "Credenciais invalidas" }, { status: 401 });
-  }
+  const form = await req.formData().catch(() => null);
+  const email = String(form?.get("email") ?? "").trim().toLowerCase();
+  const password = String(form?.get("password") ?? "").trim();
+  const fail = (code: string) => NextResponse.redirect(new URL(`/login?e=${code}`, req.url), 303);
+
+  if (!email || !password) return fail("1");
 
   try {
     let user = await prisma.user.findUnique({
@@ -37,16 +39,12 @@ export async function POST(req: Request) {
         serverId: user.serverId ?? null,
         serverName: user.server?.name ?? null,
       });
-      // Define o cookie DIRETAMENTE na resposta (garante o Set-Cookie na Vercel).
-      const res = NextResponse.json({ ok: true });
+      const res = NextResponse.redirect(new URL("/dashboard", req.url), 303);
       res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions);
       return res;
     }
-    return NextResponse.json({ ok: false, error: "Credenciais invalidas" }, { status: 401 });
+    return fail("1");
   } catch {
-    return NextResponse.json(
-      { ok: false, error: "Erro de ligacao a DB. Confirma o DATABASE_URL e corre 'npm run db:push'." },
-      { status: 500 }
-    );
+    return fail("2");
   }
 }

@@ -1,41 +1,16 @@
-"use client";
-import { useState } from "react";
+export const dynamic = "force-dynamic";
 
-export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setErr("");
-    setBusy(true);
-    try {
-      const r = await fetch("/api/login", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        cache: "no-store",
-        body: JSON.stringify({ email: email.trim(), password }),
-      });
-      const data = await r.json().catch(() => ({}));
-      if (r.ok && data?.ok) {
-        // Navegacao "dura": garante que o cookie acabado de ser definido ja
-        // segue no pedido seguinte (evita o "clicar duas vezes" e o bounce).
-        window.location.assign("/dashboard");
-        return;
-      }
-      setErr(data?.error || "Credenciais invalidas.");
-      setBusy(false);
-    } catch {
-      setErr("Nao foi possivel contactar o servidor.");
-      setBusy(false);
-    }
-  }
+export default function LoginPage({ searchParams }: { searchParams: { e?: string } }) {
+  const err =
+    searchParams?.e === "2"
+      ? "Erro de ligacao a base de dados. Confirma o DATABASE_URL."
+      : searchParams?.e
+      ? "Credenciais invalidas."
+      : "";
 
   return (
     <main className="min-h-screen grid place-items-center px-4">
-      <form onSubmit={submit} className="w-[360px] bg-card border border-border rounded-2xl p-8">
+      <form method="POST" action="/api/login" className="w-[360px] bg-card border border-border rounded-2xl p-8">
         <div className="text-xl font-extrabold mb-1">
           M2<span className="text-primary">Overwatch</span>
         </div>
@@ -43,31 +18,28 @@ export default function LoginPage() {
 
         <label className="text-xs text-muted">Email</label>
         <input
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          name="email"
           type="email"
           autoComplete="username"
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
+          required
           className="w-full mt-1 mb-3 px-3 py-2 rounded-lg bg-[#0b1019] border border-border outline-none focus:border-primary"
         />
         <label className="text-xs text-muted">Password</label>
         <input
+          name="password"
           type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
           autoComplete="current-password"
+          required
           className="w-full mt-1 px-3 py-2 rounded-lg bg-[#0b1019] border border-border outline-none focus:border-primary"
         />
 
         {err && <div className="text-red-400 text-sm mt-3">{err}</div>}
 
-        <button
-          disabled={busy}
-          className="w-full mt-6 py-3 rounded-lg font-bold bg-primary text-black hover:opacity-90 disabled:opacity-60"
-        >
-          {busy ? "A entrar..." : "Entrar"}
+        <button className="w-full mt-6 py-3 rounded-lg font-bold bg-primary text-black hover:opacity-90">
+          Entrar
         </button>
       </form>
     </main>
