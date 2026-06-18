@@ -1,0 +1,89 @@
+// M2Overwatch SaaS — schema do produto (Postgres)
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Operadores do painel. role = "ADMIN" (gere a plataforma toda) | "CLIENT" (ve so o seu servidor).
+// Um CLIENT esta ligado a um Server (tenant); um ADMIN tem serverId null e ve tudo.
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         String   @default("CLIENT")
+  server       Server?  @relation(fields: [serverId], references: [id])
+  serverId     String?
+  createdAt    DateTime @default(now())
+
+  @@index([serverId])
+}
+
+// Cada servidor de jogo cliente = um "tenant". Reporta com a sua apiKey.
+model Server {
+  id         String      @id @default(cuid())
+  name       String
+  apiKey     String      @unique
+  active     Boolean     @default(true)
+  ownerEmail String?
+  createdAt  DateTime    @default(now())
+  detections Detection[]
+  bans       Ban[]
+  listings   Listing[]
+  users      User[]
+}
+
+// Uma detecao reportada pelo agente (watcher) ou pela DLL/servidor.
+model Detection {
+  id             BigInt   @id @default(autoincrement())
+  server         Server   @relation(fields: [serverId], references: [id])
+  serverId       String
+  playerName     String
+  account        String?
+  ip             String?
+  channel        String?
+  score          Float    @default(0)
+  reason         String
+  detail         String?
+  sessionSeconds Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  @@index([serverId, createdAt])
+  @@index([reason])
+  @@index([playerName])
+}
+
+// Ban manual gerido pela staff a partir do painel.
+model Ban {
+  id         String   @id @default(cuid())
+  server     Server?  @relation(fields: [serverId], references: [id])
+  serverId   String?
+  playerName String
+  account    String?
+  ip         String?
+  reason     String?
+  note       String?
+  createdAt  DateTime @default(now())
+
+  @@index([serverId])
+  @@index([playerName])
+}
+
+// Whitelist / blacklist de jogadores, contas ou IPs.
+// list = "WHITE" | "BLACK"   field = "player" | "account" | "ip"
+model Listing {
+  id        String   @id @default(cuid())
+  server    Server?  @relation(fields: [serverId], references: [id])
+  serverId  String?
+  list      String
+  field     String
+  value     String
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([list])
+  @@index([value])
+}

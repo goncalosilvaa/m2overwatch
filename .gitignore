@@ -1,0 +1,15 @@
+node_modules
+.next
+.env
+.env.local
+*.log
+next-env.d.ts
+
+# extras
+verify/
+tsconfig.verify.json
+agent/__pycache__/
+agent/m2ow_agent_state.json
+.env*
+!.env.example
+.vercel
