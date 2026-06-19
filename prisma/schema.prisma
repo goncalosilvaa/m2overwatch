@@ -58,18 +58,23 @@ model Detection {
 
 // Ban manual gerido pela staff a partir do painel.
 model Ban {
-  id         String   @id @default(cuid())
-  server     Server?  @relation(fields: [serverId], references: [id])
-  serverId   String?
-  playerName String
-  account    String?
-  ip         String?
-  reason     String?
-  note       String?
-  createdAt  DateTime @default(now())
+  id            String    @id @default(cuid())
+  server        Server?   @relation(fields: [serverId], references: [id])
+  serverId      String?
+  playerName    String
+  account       String?
+  ip            String?
+  reason        String?
+  note          String?
+  executeInGame Boolean   @default(false)
+  executed      Boolean   @default(false)
+  executedAt    DateTime?
+  executeError  String?
+  createdAt     DateTime  @default(now())
 
   @@index([serverId])
   @@index([playerName])
+  @@index([executed])
 }
 
 // Whitelist / blacklist de jogadores, contas ou IPs.

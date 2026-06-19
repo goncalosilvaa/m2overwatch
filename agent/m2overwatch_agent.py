@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-M2Overwatch — agente de ingestao.
-Le linhas novas da tabela MySQL `bot_suspicion_log` (DB de log do jogo) e faz
-POST ao /api/ingest do painel, com a API key do servidor (header x-api-key).
-Estado guardado num ficheiro (high-water mark do id) para nao reenviar.
+M2Overwatch — agente do servidor.
+
+1) INGESTAO: le linhas novas de `bot_suspicion_log` (DB de log) e faz POST a /api/ingest.
+2) BANS: puxa bans pendentes do painel (/api/agent/bans) e aplica-os na DB de CONTAS
+   (account.status = 'BLOCK' pelo login), com o utilizador MySQL do anti-cheat; depois
+   confirma em /api/agent/bans/ack.
 
 Config por variaveis de ambiente ou por um ficheiro .env ao lado deste script.
 """
@@ -38,24 +40,44 @@ def load_env():
 
 load_env()
 
-DB_HOST = os.environ.get("M2OW_DB_HOST", "localhost")
+# --- DB de LOG do jogo (origem das detecoes) ---
+DB_HOST = os.environ.get("M2OW_DB_HOST", "127.0.0.1")
 DB_PORT = int(os.environ.get("M2OW_DB_PORT", "3306"))
 DB_USER = os.environ.get("M2OW_DB_USER", "metin2")
 DB_PASS = os.environ.get("M2OW_DB_PASS", "")
 DB_NAME = os.environ.get("M2OW_DB_NAME", "log")
 TABLE = os.environ.get("M2OW_TABLE", "bot_suspicion_log")
 ID_COL = os.environ.get("M2OW_ID_COLUMN", "id")
-API_URL = os.environ.get("M2OW_API_URL", "").strip()
+
+# --- Painel ---
+API_URL = os.environ.get("M2OW_API_URL", "").strip()   # .../api/ingest
 API_KEY = os.environ.get("M2OW_API_KEY", "").strip()
 POLL = int(os.environ.get("M2OW_POLL_SECONDS", "60"))
 BATCH = int(os.environ.get("M2OW_BATCH", "200"))
 STATE_FILE = os.environ.get("M2OW_STATE_FILE", os.path.join(HERE, "m2ow_agent_state.json"))
+
+# Base do painel (para os endpoints de bans). Derivada do API_URL se nao for dada.
+API_BASE = os.environ.get("M2OW_API_BASE", "").strip()
+if not API_BASE and API_URL:
+    API_BASE = API_URL[:-len("/api/ingest")] if API_URL.endswith("/api/ingest") else API_URL.rsplit("/api/", 1)[0]
+BANS_URL = API_BASE + "/api/agent/bans"
+ACK_URL = API_BASE + "/api/agent/bans/ack"
+
+# --- DB de CONTAS do jogo (para aplicar os bans) ---
+BANS_ENABLE = os.environ.get("M2OW_BANS_ENABLE", "1").strip() not in ("0", "false", "no", "")
+ACC_DB_HOST = os.environ.get("M2OW_ACC_DB_HOST", DB_HOST)
+ACC_DB_PORT = int(os.environ.get("M2OW_ACC_DB_PORT", "3306"))
+ACC_DB_USER = os.environ.get("M2OW_ACC_DB_USER", "").strip()
+ACC_DB_PASS = os.environ.get("M2OW_ACC_DB_PASS", "")
+ACC_DB_NAME = os.environ.get("M2OW_ACC_DB_NAME", "account")
+BAN_SQL = os.environ.get("M2OW_BAN_SQL", "UPDATE account.account SET status='BLOCK' WHERE login=%s")
 
 if not API_URL or not API_KEY:
     print("Configura M2OW_API_URL e M2OW_API_KEY (no .env ou no ambiente).", file=sys.stderr)
     sys.exit(1)
 
 
+# =========================== INGESTAO ===========================
 def load_last_id():
     try:
         with open(STATE_FILE) as f:
@@ -93,10 +115,10 @@ def to_payload(row):
     return p
 
 
-def post(payload):
+def post_json(url, payload):
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
-        API_URL, data=data, method="POST",
+        url, data=data, method="POST",
         headers={"content-type": "application/json", "x-api-key": API_KEY},
     )
     try:
@@ -106,6 +128,12 @@ def post(payload):
         return e.code, e.read().decode("utf-8", "ignore")
     except Exception as e:
         return 0, str(e)
+
+
+def get_json(url):
+    req = urllib.request.Request(url, headers={"x-api-key": API_KEY})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return r.status, json.loads(r.read().decode("utf-8", "ignore") or "{}")
 
 
 def run_once():
@@ -130,7 +158,7 @@ def run_once():
                 last = rid
                 save_last_id(last)
                 continue
-            status, body = post(payload)
+            status, body = post_json(API_URL, payload)
             if status == 200:
                 sent += 1
                 last = rid
@@ -150,18 +178,80 @@ def run_once():
     return sent
 
 
+# =========================== BANS ===========================
+def ack_ban(ban_id, ok, error=None):
+    status, body = post_json(ACK_URL, {"id": ban_id, "ok": bool(ok), "error": error})
+    if status != 200:
+        print("[ban ack] falhou id=%s status=%s %s" % (ban_id, status, body), file=sys.stderr)
+
+
+def process_bans():
+    if not BANS_ENABLE or not ACC_DB_USER:
+        return 0
+    try:
+        status, data = get_json(BANS_URL)
+    except Exception as e:
+        print("[bans] nao consegui obter pendentes:", e, file=sys.stderr)
+        return 0
+    if status != 200:
+        print("[bans] GET status %s" % status, file=sys.stderr)
+        return 0
+    bans = (data or {}).get("bans") or []
+    if not bans:
+        return 0
+
+    try:
+        conn = pymysql.connect(
+            host=ACC_DB_HOST, port=ACC_DB_PORT, user=ACC_DB_USER, password=ACC_DB_PASS,
+            database=ACC_DB_NAME, charset="utf8mb4", autocommit=True,
+        )
+    except Exception as e:
+        print("[bans] sem ligacao a DB de contas (fica pendente):", e, file=sys.stderr)
+        return 0
+
+    applied = 0
+    try:
+        with conn.cursor() as cur:
+            for b in bans:
+                bid = b.get("id")
+                account = (b.get("account") or "").strip()
+                if not account:
+                    ack_ban(bid, False, "sem conta/login para aplicar o ban")
+                    continue
+                try:
+                    cur.execute(BAN_SQL, (account,))
+                    ack_ban(bid, True)
+                    applied += 1
+                except Exception as e:
+                    ack_ban(bid, False, "SQL: %s" % e)
+    finally:
+        conn.close()
+    return applied
+
+
+def cycle():
+    try:
+        n = run_once()
+        if n:
+            print("Enviadas %s deteccoes (last_id=%s)" % (n, load_last_id()))
+    except Exception as e:
+        print("Erro ingestao:", e, file=sys.stderr)
+    try:
+        m = process_bans()
+        if m:
+            print("Aplicados %s bans no jogo" % m)
+    except Exception as e:
+        print("Erro bans:", e, file=sys.stderr)
+
+
 def main():
-    print("M2Overwatch agent -> %s (tabela %s, a partir do id %s)" % (API_URL, TABLE, load_last_id()))
+    print("M2Overwatch agent -> %s (ingest tabela %s; bans %s)"
+          % (API_URL, TABLE, "ON" if (BANS_ENABLE and ACC_DB_USER) else "OFF"))
     if POLL <= 0:
-        print("Enviadas %s deteccoes." % run_once())
+        cycle()
         return
     while True:
-        try:
-            n = run_once()
-            if n:
-                print("Enviadas %s deteccoes (last_id=%s)" % (n, load_last_id()))
-        except Exception as e:
-            print("Erro:", e, file=sys.stderr)
+        cycle()
         time.sleep(POLL)
 
 

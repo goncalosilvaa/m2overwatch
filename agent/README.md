@@ -64,3 +64,36 @@ repetir a cada 1 min (com `M2OW_POLL_SECONDS=0`), ou correr o daemon ao arranque
   se a tua tabela usar nomes diferentes.
 - Se a key estiver errada recebes 401 e o agente pára (corrige a `M2OW_API_KEY`).
 - O estado fica em `m2ow_agent_state.json`. Apaga-o para reenviar tudo de novo.
+
+## Aplicar bans no jogo (account.status = BLOCK)
+
+O painel só **marca** os bans; o agente é que os **aplica** na DB de contas do teu
+servidor, com o utilizador MySQL do anti-cheat. Fluxo:
+
+```
+Painel /bans  ── marca ban (executeInGame) ──>  /api/agent/bans (x-api-key)
+agente  ── UPDATE account.account SET status='BLOCK' WHERE login=? ──>  DB de contas
+agente  ── confirma ──>  /api/agent/bans/ack
+```
+
+### 1. Dar permissões ao utilizador do anti-cheat (uma vez)
+No MySQL do jogo:
+```sql
+GRANT UPDATE ON account.account TO 'anticheat'@'localhost';
+FLUSH PRIVILEGES;
+```
+(Se o teu utilizador já existe, basta o GRANT. Ajusta o host se não for `localhost`.)
+
+### 2. Configurar o `.env` do agente
+Preenche o bloco **DB de CONTAS** no `.env` (`M2OW_ACC_DB_*`). O `M2OW_BAN_SQL`
+por defeito bloqueia a conta pelo **login**; muda-o se o teu método for outro
+(ex.: tabela de bans própria, ou outra coluna/estado).
+
+### 3. Usar no painel
+Em **/bans**, cria o ban com a **conta/login** preenchida e "Aplicar no jogo"
+marcado (ou clica **Aplicar no jogo** numa linha existente). O agente aplica no
+próximo ciclo e a linha passa a **Aplicado ✓**. Se falhar, mostra **Erro** (passa
+o rato por cima para ver o motivo) e podes clicar **Repetir**.
+
+> Importante: o ban é por **login da conta**. Bans sem conta/login ficam com erro
+> "sem conta/login". Nas deteções, a conta vem do log; em bans manuais, preenche-a.

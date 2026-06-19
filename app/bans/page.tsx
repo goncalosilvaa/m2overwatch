@@ -1,9 +1,27 @@
 import Nav from "@/components/Nav";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/guard";
-import { createBan, deleteBan } from "./actions";
+import { createBan, deleteBan, applyBanInGame } from "./actions";
 
 export const dynamic = "force-dynamic";
+
+function GameStatus({ b }: { b: any }) {
+  if (b.executed && !b.executeError)
+    return (
+      <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 font-bold" title={b.executedAt ? new Date(b.executedAt).toLocaleString("pt-PT") : ""}>
+        Aplicado ✓
+      </span>
+    );
+  if (b.executed && b.executeError)
+    return (
+      <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 font-bold" title={b.executeError}>
+        Erro
+      </span>
+    );
+  if (b.executeInGame)
+    return <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-500/15 text-yellow-400 font-bold">Pendente</span>;
+  return <span className="text-muted text-xs">—</span>;
+}
 
 export default async function BansPage() {
   const me = await requireUser();
@@ -34,10 +52,14 @@ export default async function BansPage() {
         )}
 
         <div className="bg-card border border-border rounded-xl p-5 mb-6">
-          <h2 className="font-bold mb-3">Adicionar ban manual</h2>
+          <h2 className="font-bold mb-1">Adicionar ban manual</h2>
+          <p className="text-muted text-sm mb-3">
+            "Aplicar no jogo" marca o ban para o <b>agente</b> o executar na DB de contas
+            (<code>account.status = BLOCK</code>) pelo <b>login</b>. Preenche a conta/login para isso funcionar.
+          </p>
           <form action={createBan} className="grid sm:grid-cols-2 gap-3">
             <input name="playerName" required placeholder="Nome do jogador *" className="px-3 py-2 rounded-lg bg-bg border border-border outline-none focus:border-primary" />
-            <input name="account" placeholder="Conta (opcional)" className="px-3 py-2 rounded-lg bg-bg border border-border outline-none focus:border-primary" />
+            <input name="account" placeholder="Conta / login (para aplicar no jogo)" className="px-3 py-2 rounded-lg bg-bg border border-border outline-none focus:border-primary" />
             <input name="ip" placeholder="IP (opcional)" className="px-3 py-2 rounded-lg bg-bg border border-border outline-none focus:border-primary" />
             {admin ? (
               <select name="serverId" className="px-3 py-2 rounded-lg bg-bg border border-border outline-none focus:border-primary">
@@ -49,6 +71,10 @@ export default async function BansPage() {
             )}
             <input name="reason" placeholder="Motivo (ex: SPEEDHACK)" className="px-3 py-2 rounded-lg bg-bg border border-border outline-none focus:border-primary" />
             <input name="note" placeholder="Nota (opcional)" className="px-3 py-2 rounded-lg bg-bg border border-border outline-none focus:border-primary" />
+            <label className="flex items-center gap-2 text-sm text-muted sm:col-span-2">
+              <input type="checkbox" name="executeInGame" defaultChecked className="w-4 h-4 accent-[#ff7a18]" />
+              Aplicar no jogo (BLOCK) através do agente
+            </label>
             <div className="sm:col-span-2"><button className="px-4 py-2 rounded-lg bg-primary text-black font-bold">Banir</button></div>
           </form>
         </div>
@@ -60,35 +86,46 @@ export default async function BansPage() {
                 <th className="text-left p-3">Data</th>
                 <th className="text-left p-3">Jogador</th>
                 <th className="text-left p-3">Conta</th>
-                <th className="text-left p-3">IP</th>
                 <th className="text-left p-3">Servidor</th>
                 <th className="text-left p-3">Motivo</th>
-                <th className="text-left p-3">Nota</th>
-                <th className="text-right p-3">Acao</th>
+                <th className="text-left p-3">No jogo</th>
+                <th className="text-right p-3">Ações</th>
               </tr>
             </thead>
             <tbody>
-              {bans.length === 0 && (<tr><td colSpan={8} className="text-center text-muted p-10">Sem bans.</td></tr>)}
+              {bans.length === 0 && (<tr><td colSpan={7} className="text-center text-muted p-10">Sem bans.</td></tr>)}
               {bans.map((b) => (
                 <tr key={b.id} className="border-t border-border hover:bg-white/5">
                   <td className="p-3 whitespace-nowrap">{new Date(b.createdAt).toLocaleString("pt-PT")}</td>
                   <td className="p-3 font-semibold">{b.playerName}</td>
-                  <td className="p-3">{b.account}</td>
-                  <td className="p-3 font-mono text-xs">{b.ip}</td>
+                  <td className="p-3 font-mono text-xs">{b.account || <span className="text-muted">—</span>}</td>
                   <td className="p-3">{b.server?.name || <span className="text-muted">—</span>}</td>
                   <td className="p-3">{b.reason}</td>
-                  <td className="p-3 text-muted">{b.note}</td>
+                  <td className="p-3"><GameStatus b={b} /></td>
                   <td className="p-3 text-right">
-                    <form action={deleteBan}>
-                      <input type="hidden" name="id" value={b.id} />
-                      <button className="text-xs border border-border rounded-md px-3 py-1.5 hover:border-red-500 hover:text-red-400 text-muted">Remover</button>
-                    </form>
+                    <div className="flex gap-2 justify-end">
+                      {(!b.executeInGame || (b.executed && b.executeError)) && (
+                        <form action={applyBanInGame}>
+                          <input type="hidden" name="id" value={b.id} />
+                          <button className="text-xs border border-border rounded-md px-3 py-1.5 hover:border-primary text-muted">
+                            {b.executeError ? "Repetir" : "Aplicar no jogo"}
+                          </button>
+                        </form>
+                      )}
+                      <form action={deleteBan}>
+                        <input type="hidden" name="id" value={b.id} />
+                        <button className="text-xs border border-border rounded-md px-3 py-1.5 hover:border-red-500 hover:text-red-400 text-muted">Remover</button>
+                      </form>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        <p className="text-muted text-xs mt-3">
+          O agente de cada servidor aplica os bans pendentes com o utilizador MySQL do anti-cheat. Configura-o no <code>agent/</code>.
+        </p>
       </div>
     </main>
   );
