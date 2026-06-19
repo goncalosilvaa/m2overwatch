@@ -67,8 +67,8 @@ ACK_URL = API_BASE + "/api/agent/bans/ack"
 BANS_ENABLE = os.environ.get("M2OW_BANS_ENABLE", "1").strip() not in ("0", "false", "no", "")
 ACC_DB_HOST = os.environ.get("M2OW_ACC_DB_HOST", DB_HOST)
 ACC_DB_PORT = int(os.environ.get("M2OW_ACC_DB_PORT", "3306"))
-ACC_DB_USER = os.environ.get("M2OW_ACC_DB_USER", "").strip()
-ACC_DB_PASS = os.environ.get("M2OW_ACC_DB_PASS", "")
+ACC_DB_USER = os.environ.get("M2OW_ACC_DB_USER", DB_USER).strip()
+ACC_DB_PASS = os.environ.get("M2OW_ACC_DB_PASS", DB_PASS)
 ACC_DB_NAME = os.environ.get("M2OW_ACC_DB_NAME", "account")
 BAN_SQL = os.environ.get("M2OW_BAN_SQL", "UPDATE account.account SET status='BLOCK' WHERE login=%s")
 
