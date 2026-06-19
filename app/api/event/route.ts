@@ -3,20 +3,17 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { checkCrossServerSeen } from "@/lib/cross";
 
-// Endpoint de INGESTÃO: o agente (watcher) / DLL / servidor faz POST aqui.
-// Autenticação por header `x-api-key` (a key de cada servidor cliente).
+// Eventos LEVES de presença: login / registo. NÃO cria deteção — só faz o
+// cruzamento entre servidores (avisar se o jogador está banido noutro lado).
+// Mesma autenticação por x-api-key do /api/ingest.
 export const dynamic = "force-dynamic";
 
 const schema = z.object({
-  player: z.string().min(1).max(64),
+  type: z.enum(["login", "register"]).default("login"),
+  player: z.string().max(64).optional(),
   account: z.string().max(64).optional(),
   ip: z.string().max(64).optional(),
   email: z.string().max(128).optional(),
-  channel: z.string().max(64).optional(),
-  score: z.number().optional().default(0),
-  reason: z.string().min(1).max(64),
-  detail: z.string().max(512).optional(),
-  sessionSeconds: z.number().int().min(0).optional().default(0),
 });
 
 export async function POST(req: Request) {
@@ -33,32 +30,21 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "bad payload", issues: parsed.error.issues }, { status: 400 });
   }
-  const d = parsed.data;
+  const e = parsed.data;
 
-  await prisma.detection.create({
-    data: {
-      serverId: server.id,
-      playerName: d.player,
-      account: d.account,
-      ip: d.ip,
-      email: d.email,
-      channel: d.channel,
-      score: d.score,
-      reason: d.reason,
-      detail: d.detail,
-      sessionSeconds: d.sessionSeconds,
-    },
-  });
+  // precisa de pelo menos um identificador
+  if (!e.player && !e.account && !e.ip && !e.email) {
+    return NextResponse.json({ error: "no identifier" }, { status: 400 });
+  }
 
-  // cruzamento entre servidores: este jogador está banido noutro servidor?
   let crossAlerts = 0;
   try {
     crossAlerts = await checkCrossServerSeen(
-      { serverId: server.id, serverName: server.name, playerName: d.player, account: d.account, ip: d.ip, email: d.email },
-      "detection"
+      { serverId: server.id, serverName: server.name, playerName: e.player, account: e.account, ip: e.ip, email: e.email },
+      e.type
     );
   } catch {
-    // não falha a ingestão por causa do cruzamento
+    /* noop */
   }
 
   return NextResponse.json({ ok: true, crossAlerts });

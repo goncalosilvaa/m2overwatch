@@ -61,6 +61,7 @@ export default async function BansPage() {
             <input name="playerName" required placeholder="Nome do jogador *" className="px-3 py-2 rounded-lg bg-bg border border-border outline-none focus:border-primary" />
             <input name="account" placeholder="Conta / login (para aplicar no jogo)" className="px-3 py-2 rounded-lg bg-bg border border-border outline-none focus:border-primary" />
             <input name="ip" placeholder="IP (opcional)" className="px-3 py-2 rounded-lg bg-bg border border-border outline-none focus:border-primary" />
+            <input name="email" placeholder="Email (opcional, p/ cruzamento)" className="px-3 py-2 rounded-lg bg-bg border border-border outline-none focus:border-primary" />
             {admin ? (
               <select name="serverId" className="px-3 py-2 rounded-lg bg-bg border border-border outline-none focus:border-primary">
                 <option value="">Todos os servidores</option>

@@ -44,6 +44,7 @@ model Detection {
   playerName     String
   account        String?
   ip             String?
+  email          String?
   channel        String?
   score          Float    @default(0)
   reason         String
@@ -54,6 +55,8 @@ model Detection {
   @@index([serverId, createdAt])
   @@index([reason])
   @@index([playerName])
+  @@index([ip])
+  @@index([account])
 }
 
 // Ban manual gerido pela staff a partir do painel.
@@ -64,6 +67,7 @@ model Ban {
   playerName    String
   account       String?
   ip            String?
+  email         String?
   reason        String?
   note          String?
   executeInGame Boolean   @default(false)
@@ -75,6 +79,9 @@ model Ban {
   @@index([serverId])
   @@index([playerName])
   @@index([executed])
+  @@index([ip])
+  @@index([account])
+  @@index([email])
 }
 
 // Whitelist / blacklist de jogadores, contas ou IPs.
@@ -91,4 +98,31 @@ model Listing {
 
   @@index([list])
   @@index([value])
+}
+
+// Alerta de cruzamento entre servidores: um jogador BANIDO num servidor foi
+// visto (deteção/login) noutro servidor que usa o mesmo anti-cheat.
+// Campos desnormalizados (nomes dos servidores) para a vista ser simples/rápida.
+model CrossAlert {
+  id             String   @id @default(cuid())
+  seenServerId   String?            // servidor onde o jogador APARECEU agora
+  seenServerName String?
+  banServerId    String?            // servidor onde existe o BAN (pode ser global/null)
+  banServerName  String?
+  banId          String?            // id do Ban que fez match
+  banReason      String?
+  matchType      String             // "ip" | "name" | "account" | "email"
+  matchValue     String
+  playerName     String?
+  account        String?
+  ip             String?
+  email          String?
+  source         String             // "detection" | "login" | "ban"
+  acknowledged   Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([acknowledged])
+  @@index([seenServerId])
+  @@index([banServerId])
+  @@index([createdAt])
 }

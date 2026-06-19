@@ -108,6 +108,8 @@ def to_payload(row):
         p["account"] = str(row["login"])[:64]
     if row.get("ip"):
         p["ip"] = str(row["ip"])[:64]
+    if row.get("email") or row.get("mail"):
+        p["email"] = str(row.get("email") or row.get("mail"))[:128]
     if row.get("server"):
         p["channel"] = str(row["server"])[:64]
     if row.get("detail"):

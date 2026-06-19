@@ -6,6 +6,7 @@ import Logo from "@/components/Logo";
 const BASE: [string, string][] = [
   ["/dashboard", "Deteções"],
   ["/analytics", "Analytics"],
+  ["/alerts", "Alertas"],
   ["/bans", "Bans"],
   ["/lists", "Listas"],
 ];
